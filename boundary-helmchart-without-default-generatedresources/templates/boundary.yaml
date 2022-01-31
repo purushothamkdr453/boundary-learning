@@ -1,0 +1,77 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boundary
+  labels:
+    app: boundary 
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boundary 
+  template:
+    metadata:
+      labels:
+        app: boundary 
+    spec:
+      volumes:
+      - name: boundary-config
+        configMap:
+          name: boundary-config
+      initContainers:
+      - name: boundary-init
+        image: hashicorp/boundary:latest
+        command: ["/bin/sh", "-c"]
+        args: ["boundary database init -skip-initial-login-role-creation -skip-auth-method-creation -skip-host-resources-creation -skip-scopes-creation -skip-target-creation -config /boundary/boundary.hcl"]
+        volumeMounts:
+        - name: boundary-config
+          mountPath: /boundary
+          readOnly: true
+        env:
+        - name: BOUNDARY_PG_URL
+          value: "postgresql://postgres:postgres@postgres:5432/boundary?sslmode=disable"
+        - name: HOSTNAME
+          value: "boundary"
+      containers:
+      - name: boundary 
+        image: hashicorp/boundary:latest
+        command: ["/bin/sh", "-c"]
+        args: ["boundary server -config /boundary/boundary.hcl"]
+        volumeMounts:
+        - name: boundary-config
+          mountPath: /boundary
+          readOnly: true
+        ports:
+        - name: api
+          containerPort: 9200 
+        - name: cluster
+          containerPort: 9201
+        - name: data
+          containerPort: 9202 
+        env:
+        - name: BOUNDARY_PG_URL 
+          value: "postgresql://postgres:postgres@postgres:5432/boundary?sslmode=disable"
+        - name: HOSTNAME 
+          value: "boundary"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boundary-controller
+  labels:
+    app: boundary-controller
+spec:
+  type: ClusterIP
+  selector:
+    app: boundary 
+  ports:
+    - name: api
+      port: 9200 
+      targetPort: 9200
+    - name: cluster
+      port: 9201
+      targetPort: 9201
+    - name: data
+      port: 9202
+      targetPort: 9202 
